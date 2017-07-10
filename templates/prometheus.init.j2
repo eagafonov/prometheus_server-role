@@ -1,0 +1,141 @@
+#!/bin/sh
+
+# kFreeBSD do not accept scripts as interpreters, using #!/bin/sh and sourcing.
+#if [ true != "$INIT_D_SCRIPT_SOURCED" ] ; then
+#    set "$0" "$@"; INIT_D_SCRIPT_SOURCED=true . /lib/init/init-d-script
+#fi
+
+. /lib/lsb/init-functions
+
+#set -x
+
+### BEGIN INIT INFO
+# Provides:          prometheus
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Monitoring system and time series database
+# Description:       Prometheus is a systems and services monitoring system. It
+#                    collects metrics from configured targets at given
+#                    intervals, evaluates rule expressions, displays the
+#                    results, and can trigger alerts if some condition is
+#                    observed to be true.
+### END INIT INFO
+
+# Author: Martín Ferrari <tincho@debian.org>
+
+DESC="monitoring system and time series database"
+DAEMON={{ prometheus_bin_path }}/prometheus
+NAME={{ prometheus_user }}
+USER={{ prometheus_group }}
+PIDFILE=/var/run/prometheus/prometheus.pid
+LOGFILE={{ prometheus_log_path }}/{{ prometheus_log_file }}
+CFGFILE={{ prometheus_conf_path }}/prometheus.yml
+
+HELPER=/usr/bin/daemon
+HELPER_ARGS="--name=$NAME --output=$LOGFILE --pidfile=$PIDFILE --user=$USER"
+
+ARGS="{% for option in prometheus_options %}-{{ option }} {% endfor %}"
+
+config_check()
+{
+    retcode=0
+    errors="$(/usr/bin/promtool check-config $CFGFILE 2>&1)" || retcode=$?
+    if [ $retcode -ne 0 ]; then
+        log_failure_msg
+        echo "Configuration test failed. Output of config test was:" >&2
+        echo "$errors" >&2
+        return $retcode
+    fi
+}
+
+do_start_prepare()
+{
+    mkdir -p `dirname $PIDFILE` || true
+    chown -R $USER: {{ prometheus_root_path }}/data
+    chown -R $USER: `dirname $LOGFILE`
+    chown -R $USER: `dirname $PIDFILE`
+}
+
+do_start_cmd()
+{
+    # Return
+    #   0 if daemon has been started
+    #   1 if daemon was already running
+    #   2 if daemon could not be started
+    $HELPER $HELPER_ARGS --running && return 1
+    config_check || return 2
+    $HELPER $HELPER_ARGS -- $DAEMON $ARGS || return 2
+    return 0
+}
+
+do_stop_cmd()
+{
+    # Return
+    #   0 if daemon has been stopped
+    #   1 if daemon was already stopped
+    #   2 if daemon could not be stopped
+    #   other if a failure occurred
+    $HELPER $HELPER_ARGS --running || return 1
+    $HELPER $HELPER_ARGS --stop || return 2
+    # wait for the process to really terminate
+    for n in 1 2 3 4 5; do
+        sleep $n
+        $HELPER $HELPER_ARGS --running || break
+    done
+    $HELPER $HELPER_ARGS --running || return 0
+    return 2
+}
+
+do_reload()
+{
+    log_daemon_msg "Reloading $DESC configuration files" "$NAME"
+    $HELPER $HELPER_ARGS --running || return 1
+    config_check || return 2
+    helper_pid=$(cat $PIDFILE)
+    if [ -z "$helper_pid" ]; then
+        log_failure_msg "Unable to find PID"
+        return 1
+    fi
+    start-stop-daemon --stop --signal 1 --quiet \
+        --ppid "$helper_pid" --exec "$DAEMON"
+    log_end_msg $?
+}
+
+
+case $1 in
+	start)
+		log_daemon_msg "Starting Prometheus server" "Prometheus"
+        do_start_prepare
+        do_start_cmd
+		status=$?
+		log_end_msg $status
+  		;;
+	stop)
+		log_daemon_msg "Stopping Prometheus server" "prometheus"
+        do_stop_cmd
+		log_end_msg $?
+		rm -f $PIDFILE
+  		;;
+	restart|force-reload)
+		$0 stop && sleep 2 && $0 start
+  		;;
+	try-restart)
+		if $0 status >/dev/null; then
+			$0 restart
+		else
+			exit 0
+		fi
+		;;
+	reload)
+		exit 3
+		;;
+	status)
+		status_of_proc $DAEMON "Prometheus server"
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart|try-restart|force-reload|status}"
+		exit 2
+		;;
+esac

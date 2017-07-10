@@ -76,10 +76,3 @@
   with_items:
     - prometheus
     - promtool
-
-- name: PROMETHEUS | Copy Daemon script
-  template:
-    src: prometheus.service.j2
-    dest: /lib/systemd/system/prometheus.service
-    mode: 0644
-  notify: restart prometheus

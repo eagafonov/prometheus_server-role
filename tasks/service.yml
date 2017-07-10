@@ -1,8 +1,51 @@
 ---
 
-- name: PROMETHEUS | Configuring service
+- name: PROMETHEUS | Check for systemd
+  command: systemctl --version
+  register: prometheus_systemd_check
+  changed_when: false
+  ignore_errors: true
+
+# Systemd stuff
+
+- name: PROMETHEUS | Copy Daemon script (systemd)
+  template:
+    src: prometheus.service.j2
+    dest: /lib/systemd/system/prometheus.service
+    mode: 0644
+  notify: restart prometheus
+  when: prometheus_systemd_check|succeeded
+
+- name: PROMETHEUS | Configuring service (systemd)
   systemd:
     name: prometheus
     state: "{{ prometheus_service_state }}"
     enabled: "{{ prometheus_service_enabled }}"
     daemon_reload: yes
+  when: prometheus_systemd_check|succeeded
+
+# init.d  stuff
+
+- name: PROMETHEUS | Installing dependencies for daemon
+  apt:
+    pkg: "{{ item }}"
+    state: present
+  with_items:
+    - daemon
+  tags:
+    skip_ansible_lint
+
+- name: PROMETHEUS | Copy Daemon script (init)
+  template:
+    src: prometheus.init.j2
+    dest: /etc/init.d/prometheus
+    mode: 0755
+  notify: restart prometheus
+  when: prometheus_systemd_check|failed
+
+- name: PROMETHEUS | Configuring service (init.d)
+  service:
+    name: prometheus
+    state: "{{ prometheus_service_state }}"
+    enabled: "{{ prometheus_service_enabled }}"
+  when: prometheus_systemd_check|failed
