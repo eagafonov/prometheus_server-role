@@ -34,12 +34,14 @@ prometheus_rules_templates: []
 # Port & host
 prometheus_port: 9090
 prometheus_external_hostname: "{{ ansible_nodename }}"
+prometheus_external_port: 9090
 
 prometheus_enable_remote_shutdown: 'false'
 
 # ALERTMANAGER
 prometheus_alertmanager_host: localhost
 prometheus_alertmanager_port: 9093
+prometheus_alertmanager_path: ""
 
 # STORAGE
 prometheus_storage_local_memory_chunks: 262144
@@ -53,16 +55,23 @@ prometheus_scrape_timeout: 10s
 prometheus_evaluation_interval: 1m
 prometheus_external_labels: []
 
+# WEB
+
+prometheus_route_prefix: "/"
+prometheus_address: ""
+
 prometheus_options:
-  - "alertmanager.url=http://{{ prometheus_alertmanager_host }}:{{ prometheus_alertmanager_port }}"
+  - "alertmanager.url=http://{{ prometheus_alertmanager_host }}:{{ prometheus_alertmanager_port }}{{ prometheus_alertmanager_path }}"
   - "storage.local.memory-chunks={{ prometheus_storage_local_memory_chunks }}"
   - "storage.local.max-chunks-to-persist={{ prometheus_storage_max_chunks_to_persist }}"
   - "storage.local.retention={{ prometheus_storage_retention }}"
   - "storage.local.series-file-shrink-ratio={{ prometheus_storage_retention_local_series_file_shrink_ratio }}"
   - "storage.local.path={{ prometheus_data_path }}"
-  - "web.external-url=http://{{ prometheus_external_hostname }}:{{ prometheus_port }}/"
+  - "web.external-url=http://{{ prometheus_external_hostname }}:{{ prometheus_external_port }}{{prometheus_route_prefix}}"
   - "web.enable-remote-shutdown={{ prometheus_enable_remote_shutdown }}"
   - "config.file={{ prometheus_conf_path }}/prometheus.yml"
+  - "web.listen-address={{prometheus_address}}:{{prometheus_port}}"
+  - "web.route-prefix={{prometheus_route_prefix}}"
 
 default_app:
   server: 'default'
